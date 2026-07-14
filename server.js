@@ -1,16 +1,15 @@
-
-
 const express = require("express");
 const session = require("express-session");
 const bodyParser = require("body-parser");
 const bcrypt = require("bcryptjs");
 const fs = require("fs");
+const path = require("path");
 
 const app = express();
+const PORT = process.env.PORT || 3000;
 
 app.use(bodyParser.urlencoded({ extended: true }));
-
-app.use(express.static("public"));
+app.use(express.static(path.join(__dirname, "public")));
 
 app.use(
   session({
@@ -31,13 +30,25 @@ function getUsers() {
 }
 
 function saveUsers(users) {
-  fs.writeFileSync(
-    database,
-    JSON.stringify(users, null, 2)
-  );
+  fs.writeFileSync(database, JSON.stringify(users, null, 2));
 }
-app.post("/register", async (req, res) => {;
-const { username, password } = req.body;
+
+// Home → Register
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "register.html"));
+});
+
+// Show Login Page
+app.get("/login", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "login.html"));
+});
+
+// Show Register Page
+app.get("/register", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "register.html"));
+});// Register User
+app.post("/register", async (req, res) => {
+  const { username, password } = req.body;
 
   let users = getUsers();
 
@@ -46,7 +57,7 @@ const { username, password } = req.body;
   );
 
   if (exists) {
-    return res.send("Username already exists");
+    return res.send("Username already exists!");
   }
 
   const hashedPassword = await bcrypt.hash(password, 10);
@@ -55,18 +66,18 @@ const { username, password } = req.body;
     username: username,
     password: hashedPassword,
     level: 0,
-    fruit: "None",
-    money: 0
+    money: 0,
+    fruit: "None"
   });
 
   saveUsers(users);
 
+  // After registering → Login page
   res.redirect("/login.html");
 });
 
-
+// Login User
 app.post("/login", async (req, res) => {
-
   const { username, password } = req.body;
 
   let users = getUsers();
@@ -76,7 +87,7 @@ app.post("/login", async (req, res) => {
   );
 
   if (!user) {
-    return res.send("Account not found");
+    return res.send("Account not found!");
   }
 
   const match = await bcrypt.compare(
@@ -85,36 +96,82 @@ app.post("/login", async (req, res) => {
   );
 
   if (!match) {
-    return res.send("Wrong password");
+    return res.send("Wrong password!");
   }
 
   req.session.user = user.username;
 
-  res.redirect("/dashboard.html");
-});
+  // After login → Dashboard
+  res.redirect("/dashboard");
+});// Dashboard
 app.get("/dashboard", (req, res) => {
-
   if (!req.session.user) {
     return res.redirect("/login.html");
   }
 
-  res.redirect("/dashboard.html");
-
+  res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-app.get("/logout", (req, res) => {
+// Get logged in user
+app.get("/api/user", (req, res) => {
+  if (!req.session.user) {
+    return res.status(401).json({
+      error: "Not logged in"
+    });
+  }
 
+  let users = getUsers();
+
+  const user = users.find(
+    u => u.username === req.session.user
+  );
+
+  if (!user) {
+    return res.status(404).json({
+      error: "User not found"
+    });
+  }
+
+  res.json({
+    username: user.username,
+    level: user.level,
+    money: user.money,
+    fruit: user.fruit
+  });
+});
+
+// Logout
+app.get("/logout", (req, res) => {
   req.session.destroy(() => {
     res.redirect("/login.html");
   });
+});// Save player data
+app.post("/api/save", (req, res) => {
+  if (!req.session.user) {
+    return res.status(401).send("Not logged in");
+  }
 
+  let users = getUsers();
+
+  const user = users.find(
+    u => u.username === req.session.user
+  );
+
+  if (!user) {
+    return res.status(404).send("User not found");
+  }
+
+  user.level = Number(req.body.level || user.level);
+  user.money = Number(req.body.money || user.money);
+  user.fruit = req.body.fruit || user.fruit;
+
+  saveUsers(users);
+
+  res.send("Saved successfully");
 });
 
-app.listen(3000, () => {
-
-  console.log("==================================");
-  console.log("Blox Fruit Hub Started!");
-  console.log("Open: http://localhost:3000");
-  console.log("==================================");
-
+// Start server
+app.listen(PORT, () => {
+  console.log(`Blox Fruit Hub running on port ${PORT}`);
 });
+
